@@ -1,11 +1,14 @@
 import sys
 import os
 
+
 # Add the relative or absolute path to the folder you need to import from
 sys.path.append(os.path.abspath("../"))
 
+
 from base import BaseCustomEnv
 from dynamics import *
+from gym.spaces import Box
 
 """
 Class to define first ceviche environment.
@@ -28,6 +31,7 @@ class CevicheEnv(BaseCustomEnv):
                  space=10,               # Space between the PMLs and the design region (in pixels)
                  wg_width=12,            # Width of the waveguide (in pixels)
                  space_slice=8,          # Length in pixels of the source/probe slices on each side of the center point
+                 action_space = Box(low=0.0, high=1.0, shape=(3600,), dtype=np.float32) # Updates the entire design region, returns updated density values
                  ):
         super().__init__()
         self.omega1, self.omega2 = omega1, omega2
@@ -81,13 +85,23 @@ class CevicheEnv(BaseCustomEnv):
         self.E02 = mode_overlap(Ez2, self.probe2)
     
     # Assume action is a list of two vectors
+    # Action: List of two arrays: 
+    #   Array 01: All of the changes we want to add to the current grid. 
+    #               With 10% change, yields to 360 values. 
+    #   Array 02: List of indices. With current setup, consists of 3600 values. 
+    #               Don't worry about it, it will handle the math. 
+
     def step(self, action):
-        # 
+        """
+        Takes in an action. 
+        Returns: small_rho -> next state
+                 reward -> reward associated with the next state
+        """
         # properly break up the action
-        deltas, indices = action
+        new_densities, indices = action
 
         small_rho = extract_small_rho(self.rho, self.Nx, self.Ny, self.Npml, self.space)
-        small_rho[indices] += deltas
+        small_rho[indices] = new_densities
         self.rho = load_rho(self.rho, small_rho, self.Nx, self.Ny, self.Npml, self.space)
 
         reward = objective(self.rho, self.bg_rho, self.design_region,
