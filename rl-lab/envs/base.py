@@ -19,9 +19,6 @@ class BaseCustomEnv(gym.Env):
     def step(self, action):
         raise NotImplementedError
     
-    def step(self, action):
-        raise NotImplementedError
-    
     def render(self, mode='human'):
         pass
 
