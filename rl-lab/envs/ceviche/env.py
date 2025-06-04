@@ -81,6 +81,11 @@ class CevicheEnv(BaseCustomEnv):
         self.E02 = mode_overlap(Ez2, self.probe2)
     
     # Assume action is a list of two vectors
+    # Action: List of two arrays: 
+    #   Array 01: All of the changes we want to add to the current grid. 
+    #               With 10% change, yields to 360 values. 
+    #   Array 02: List of indices. With current setup, consists of 3600 values. 
+    #               Don't worry about it, it will handle the math. 
     def step(self, action):
         # properly break up the action
         deltas, indices = action
