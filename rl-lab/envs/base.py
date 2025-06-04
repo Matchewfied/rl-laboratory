@@ -1,5 +1,4 @@
-import gym
-from gym import spaces
+import gymnasium as gym
 
 """
 Defines the API that every future custom environment should abide by.
