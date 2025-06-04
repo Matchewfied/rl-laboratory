@@ -82,6 +82,7 @@ class CevicheEnv(BaseCustomEnv):
     
     # Assume action is a list of two vectors
     def step(self, action):
+        # 
         # properly break up the action
         deltas, indices = action
 
@@ -108,7 +109,7 @@ class CevicheEnv(BaseCustomEnv):
                                         self.space, self.wg_width, 
                                         self.space_slice)
 
-        return extract_small_rho(self.rho, self.Nx, self.Ny, self.Npml, self.space)
+        return extract_small_rho(self.rho, self.Nx, self.Ny, self.Npml, self.space).reshape
     
     def render(self):
         pass
@@ -116,12 +117,20 @@ class CevicheEnv(BaseCustomEnv):
     def print_state(self):
         print(extract_small_rho(self.rho, self.Nx, self.Ny, self.Npml, self.space))
 
+    def set_state(self, state):
+        self.rho = load_rho(self.rho, state, self.Nx, self.Ny, self.Npml, self.space)
+        return extract_small_rho(self.rho, self.Nx, self.Ny, self.Npml, self.space)
+
+
 def load_rho(rho, to_load, Nx, Ny, Npml, space):
     design_x = Nx - Npml - space - (Npml + space)
     design_y = Ny - Npml - space - (Npml + space)
     rho[Npml + space:Nx - Npml - space, Npml + space:Ny - Npml - space] = to_load.reshape((design_x, design_y))
     return rho
 
+
 def extract_small_rho(rho, Nx, Ny, Npml, space):
+    design_x = Nx - Npml - space - (Npml + space)
+    design_y = Ny - Npml - space - (Npml + space)
     return rho[Npml + space:Nx - Npml - space,
-                Npml + space:Ny - Npml - space]
+                Npml + space:Ny - Npml - space].reshape((design_x * design_y,))
