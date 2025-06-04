@@ -109,7 +109,7 @@ class CevicheEnv(BaseCustomEnv):
                                         self.space, self.wg_width, 
                                         self.space_slice)
 
-        return extract_small_rho(self.rho, self.Nx, self.Ny, self.Npml, self.space).reshape
+        return extract_small_rho(self.rho, self.Nx, self.Ny, self.Npml, self.space)
     
     def render(self):
         pass
