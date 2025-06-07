@@ -122,8 +122,8 @@ class CevicheEnv(BaseCustomEnv):
 
     def print_state(self):
         print("Print state called")
-        print(extract_small_rho(self.rho, self.Nx, self.Ny, self.Npml, self.space))
-        sys.stdout.flush()
+        #print(extract_small_rho(self.rho, self.Nx, self.Ny, self.Npml, self.space))
+        #sys.stdout.flush()
 
     def set_state(self, state):
         self.rho = load_rho(self.rho, state, self.Nx, self.Ny, self.Npml, self.space)
