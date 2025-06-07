@@ -1,4 +1,4 @@
-from env import CevicheEnv
+from .env import CevicheEnv
 import torch
 import numpy as np
 

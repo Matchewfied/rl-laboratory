@@ -1,14 +1,5 @@
-import sys
-import os
-
-
-# Add the relative or absolute path to the folder you need to import from
-sys.path.append(os.path.abspath("../"))
-
-
-from base import BaseCustomEnv
-from dynamics import *
-from gym.spaces import Box
+from ..base import BaseCustomEnv
+from .dynamics import *
 
 """
 Class to define first ceviche environment.
@@ -31,7 +22,7 @@ class CevicheEnv(BaseCustomEnv):
                  space=10,               # Space between the PMLs and the design region (in pixels)
                  wg_width=12,            # Width of the waveguide (in pixels)
                  space_slice=8,          # Length in pixels of the source/probe slices on each side of the center point
-                 action_space = Box(low=0.0, high=1.0, shape=(3600,), dtype=np.float32) # Updates the entire design region, returns updated density values
+                 # action_space = Box(low=0.0, high=1.0, shape=(3600,), dtype=np.float32) # Updates the entire design region, returns updated density values
                  ):
         super().__init__()
         self.omega1, self.omega2 = omega1, omega2
