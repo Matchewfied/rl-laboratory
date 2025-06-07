@@ -14,6 +14,7 @@ import numpy as np
 def test():
     with open("log.txt", "w") as f:
         print("hello", file=f)
+    print ("Howdy!")
 
 if __name__ == "__main__":
     test()
