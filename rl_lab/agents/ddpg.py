@@ -1,17 +1,11 @@
-
-# Add the relative or absolute path to the folder you need to import from
-sys.path.append(os.path.abspath("../"))
-import sys
-import os
-
 import random
 import collections
 import numpy as np
-import gym
+import gymnasium as gym
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from envs.ceviche.env import CevicheEnv
+from ..envs.ceviche.env import CevicheEnv
 
 
 
@@ -27,7 +21,7 @@ BATCH_SIZE = 64            # Mini-batch size for sampling from the replay buffer
 TAU = 1e-3                 # Soft update factor for target networks
 NOISE_SCALE = 0.1          # Scale of Ornstein-Uhlenbeck exploration noise
 MAX_EPISODES = 500         # Total number of training episodes
-MAX_STEPS = 200            # Maximum steps per episode
+MAX_STEPS = 50            # Maximum steps per episode
 
 # ================================
 # Replay Buffer Definition
@@ -175,13 +169,14 @@ def train():
     env = CevicheEnv()  # Create environment
     state_dim = (env.Nx // 2) * (env.Ny // 2)  # Dimensions are 60x60 from the design space
     action_dim = state_dim     # Design choice: update the entire design space, parameterize percentage later
-    max_action = float(env.action_space.high[0])  # Action range: [0, 1]
+    max_action = 1.0 # Action range: [0, 1]
+
 
     # Instantiate online networks
-    actor = Actor(state_dim, action_dim, max_action)
+    actor = Actor(state_dim, action_dim)
     critic = Critic(state_dim, action_dim)
     # Instantiate target networks, copying weights from online networks
-    target_actor = Actor(state_dim, action_dim, max_action)
+    target_actor = Actor(state_dim, action_dim)
     target_critic = Critic(state_dim, action_dim)
     target_actor.load_state_dict(actor.state_dict())
     target_critic.load_state_dict(critic.state_dict())
@@ -196,14 +191,18 @@ def train():
 
     # Pre-fill replay buffer with random actions to ensure enough samples
     state = env.reset()
-    for _ in range(BUFFER_SIZE // 10):
+    for _ in range(BUFFER_SIZE // 1000):
         # Random action for initial exploration
 
         # action_space is currently not a method of env, could probably
         # just use untrained model since this is initialized randomly
         # generate a random state
         # call actor on state
-        next_state, reward = env.step(action)
+        state_t = torch.from_numpy(state)
+        state_t = state_t.to(dtype=torch.float32)
+        action = actor(state_t)
+
+        next_state, reward = env.step([action.detach().numpy(), np.arange(3600)])
         done = False # manually updating for now
         replay_buffer.push(state, action, reward, next_state, done)
         # If episode ends, reset environment
@@ -225,7 +224,7 @@ def train():
             action = np.clip(action, 0, max_action)
 
             # Step environment and collect feedback
-            next_state, reward = env.step(action)
+            next_state, reward = env.step([action, np.arange(3600)])
             # Store transition in replay buffer
             done = False
             replay_buffer.push(state, action, reward, next_state, done)

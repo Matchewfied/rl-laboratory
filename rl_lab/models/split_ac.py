@@ -1,5 +1,5 @@
-import gym
-from split_mlp import SplitMLP
+import gymnasium as gym
+from .split_mlp import SplitMLP
 import torch
 import torch.nn as nn
 
