@@ -1,6 +1,7 @@
 import random
 import collections
 import numpy as np
+import os
 import gymnasium as gym
 import torch
 import torch.nn as nn
@@ -19,7 +20,7 @@ CRITIC_LR = 1e-3           # Learning rate for the critic network
 BUFFER_SIZE = 100000       # Maximum size of the replay buffer
 BATCH_SIZE = 64            # Mini-batch size for sampling from the replay buffer
 TAU = 1e-3                 # Soft update factor for target networks
-NOISE_SCALE = 0.1          # Scale of Ornstein-Uhlenbeck exploration noise
+NOISE_SCALE = 0.5          # Scale of Ornstein-Uhlenbeck exploration noise
 MAX_EPISODES = 500         # Total number of training episodes
 MAX_STEPS = 50            # Maximum steps per episode
 
@@ -68,17 +69,18 @@ class Actor(nn.Module):
     """
     # State dimensions: 3600. Each number corresponds to a pixel in the 
     #   original design space. 
-    def __init__(self, state_dim, action_dim):
+    def __init__(self, state_dim, action_dim, net):
         super().__init__()
-        # Define a 3-layer feedforward network
-        self.net = nn.Sequential(
-            nn.Linear(state_dim, 400),   # Input: state_dim -> 400
-            nn.ReLU(),                   # Non-linear activation
-            nn.Linear(400, 300),         # Hidden: 400 -> 300
-            nn.ReLU(),                   # Non-linear activation
-            nn.Linear(300, action_dim),  # Output: 300 -> action_dim
-            nn.Sigmoid()                 # Sigmoid to bound actions in [0, 1]
-        )
+        # # Define a 3-layer feedforward network
+        # self.net = nn.Sequential(
+        #     nn.Linear(state_dim, 400),   # Input: state_dim -> 400
+        #     nn.ReLU(),                   # Non-linear activation
+        #     nn.Linear(400, 300),         # Hidden: 400 -> 300
+        #     nn.ReLU(),                   # Non-linear activation
+        #     nn.Linear(300, action_dim),  # Output: 300 -> action_dim
+        #     nn.Sigmoid()                 # Sigmoid to bound actions in [0, 1]
+        # )
+        self.net = net
 
     def forward(self, x):
         """
@@ -162,130 +164,108 @@ def soft_update(target, source, tau):
     for target_param, source_param in zip(target.parameters(), source.parameters()):
         target_param.data.copy_(tau * source_param.data + (1.0 - tau) * target_param.data)
 
-# ================================
-# Main DDPG Training Loop
-# ================================
-def train():
-    env = CevicheEnv()  # Create environment
-    state_dim = (env.Nx // 2) * (env.Ny // 2)  # Dimensions are 60x60 from the design space
-    action_dim = state_dim     # Design choice: update the entire design space, parameterize percentage later
-    max_action = 1.0 # Action range: [0, 1]
+def stack_tensors(data, from_numpy=False):
+    if from_numpy:
+        return torch.stack([torch.from_numpy(arr) for arr in data])
+    
+    if data[0].ndim > 1:
+        return torch.stack([arr[0] for arr in data])
+    return torch.stack([arr for arr in data])
+ 
+def train(num_episodes, num_steps, save_dir, save_rho, net, experiment_name): # Can turn this into a config eventually.
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    env = CevicheEnv(save_dir=save_dir, save_rho=save_rho, experiment_name=experiment_name)
+    state_dim = (env.Nx // 2) * (env.Ny // 2)
+    action_dim = state_dim
+    max_action = 1.0
 
-
-    # Instantiate online networks
-    actor = Actor(state_dim, action_dim)
-    critic = Critic(state_dim, action_dim)
-    # Instantiate target networks, copying weights from online networks
-    target_actor = Actor(state_dim, action_dim)
-    target_critic = Critic(state_dim, action_dim)
+    # Models to GPU
+    actor = Actor(state_dim, action_dim, net).to(device)
+    critic = Critic(state_dim, action_dim).to(device)
+    target_actor = Actor(state_dim, action_dim, net).to(device)
+    target_critic = Critic(state_dim, action_dim).to(device)
     target_actor.load_state_dict(actor.state_dict())
     target_critic.load_state_dict(critic.state_dict())
 
-    # Optimizers for actor and critic
     actor_optimizer = optim.Adam(actor.parameters(), lr=ACTOR_LR)
     critic_optimizer = optim.Adam(critic.parameters(), lr=CRITIC_LR)
 
-    # Initialize replay buffer and noise process
     replay_buffer = ReplayBuffer(BUFFER_SIZE)
     noise = OUNoise(action_dim)
 
-    # Pre-fill replay buffer with random actions to ensure enough samples
+    # Prefill buffer
+    total_steps = 0
     state = env.reset()
     for _ in range(BUFFER_SIZE // 1000):
-        # Random action for initial exploration
-
-        # action_space is currently not a method of env, could probably
-        # just use untrained model since this is initialized randomly
-        # generate a random state
-        # call actor on state
-        state_t = torch.from_numpy(state)
-        state_t = state_t.to(dtype=torch.float32)
-        action = actor(state_t)
-
-        next_state, reward = env.step([action.detach().numpy(), np.arange(3600)])
-        done = False # manually updating for now
+        state_t = torch.from_numpy(state).float().to(device)
+        action = actor(state_t.unsqueeze(0)).detach().cpu()
+        action = action.view(1, -1)
+        next_state, reward = env.step([action[0].numpy(), np.arange(3600)])
+        done = False
         replay_buffer.push(state, action, reward, next_state, done)
-        # If episode ends, reset environment
         state = next_state if not done else env.reset()
 
-    # Training loop over episodes
-    for episode in range(1, MAX_EPISODES + 1):
-        state = env.reset()   # Reset at the start of each episode
-        noise.reset()         # Reset exploration noise
+    for episode in range(1, num_episodes + 1):
+        state = env.reset()
+        noise.reset()
         episode_reward = 0
 
-        for step in range(MAX_STEPS):
-            # Convert state to tensor for the actor
-            state_tensor = torch.FloatTensor(state).unsqueeze(0)  # Shape: [1, state_dim]
-            # Get deterministic action from actor, then add exploration noise
-            action = actor(state_tensor).detach().cpu().numpy()[0]
+        for step in range(num_steps):
+            total_steps += 1
+            state_tensor = torch.FloatTensor(state).to(device)
+            action = actor(state_tensor.unsqueeze(0)).detach().cpu()
             action = action + noise.sample() * NOISE_SCALE
-            # Clip action to valid range
-            action = np.clip(action, 0, max_action)
+            action = action.view(1, -1)
+            action = torch.clamp(action, 0, max_action)
 
-            # Step environment and collect feedback
-            next_state, reward = env.step([action, np.arange(3600)])
-            # Store transition in replay buffer
+            next_state, reward = env.step([action[0].numpy(), np.arange(3600)])
             done = False
             replay_buffer.push(state, action, reward, next_state, done)
             state = next_state
-            episode_reward += reward # Design choice
+            episode_reward += reward
 
-            # Only update if buffer has enough samples
             if len(replay_buffer) >= BATCH_SIZE:
-                # Sample a random mini-batch of transitions
                 batch = replay_buffer.sample(BATCH_SIZE)
-                states = torch.FloatTensor(batch.state)           # [batch_size, state_dim]
-                actions = torch.FloatTensor(batch.action).unsqueeze(1)  # [batch_size, action_dim]
-                rewards = torch.FloatTensor(batch.reward).unsqueeze(1)  # [batch_size, 1]
-                next_states = torch.FloatTensor(batch.next_state) # [batch_size, state_dim]
-                dones = torch.FloatTensor(batch.done).unsqueeze(1)      # [batch_size, 1]
+                states = stack_tensors(batch.state, from_numpy=True).float().to(device)
+                actions = stack_tensors(batch.action, from_numpy=False).float().to(device)
+                rewards = torch.FloatTensor(batch.reward).unsqueeze(1).to(device)
+                next_states = torch.FloatTensor(batch.next_state).to(device)
+                dones = torch.FloatTensor(batch.done).unsqueeze(1).to(device)
 
-                # -------------------------
-                # Critic Update (TD target)
-                # -------------------------
                 with torch.no_grad():
-                    # Compute next action from target actor
                     next_actions = target_actor(next_states)
-                    # Compute target Q-value from target critic
                     target_q = target_critic(next_states, next_actions)
-                    # TD target: r + gamma * Q_target(s', mu_target(s')) * (1 - done)
                     y = rewards + GAMMA * (1 - dones) * target_q
 
-                # Current Q estimate
-                current_q = critic(states, actions)
-                # Critic loss (mean squared error between current and target Q)
-                critic_loss = nn.MSELoss()(current_q, y)
                 critic_optimizer.zero_grad()
+                current_q = critic(states, actions)
+                critic_loss = nn.MSELoss()(current_q, y)
                 critic_loss.backward()
                 critic_optimizer.step()
 
-                # -------------------------
-                # Actor Update (Policy)
-                # -------------------------
                 actor_optimizer.zero_grad()
-                # Actor loss: maximize Q value (equiv. minimize negative Q)
-                actor_loss = -critic(states, actor(states)).mean()
+                predicted_actions = actor(states)
+                actor_loss = -critic(states, predicted_actions).mean()
                 actor_loss.backward()
                 actor_optimizer.step()
 
-                # -------------------------
-                # Soft update target networks
-                # -------------------------
                 soft_update(target_actor, actor, TAU)
                 soft_update(target_critic, critic, TAU)
 
-            # End episode if done
             if done:
                 break
 
-        # Print episode result
         print(f"Episode {episode}: Reward = {episode_reward:.2f}")
+        if total_steps % 2000 == 1999:
+            actor_save_path = os.path.join(save_dir, "ddpg_actor.pth")
+            critic_save_path = os.path.join(save_dir, "ddpg_critic.pth")
+            torch.save(actor.state_dict(), actor_save_path)
+            torch.save(critic.state_dict(), critic_save_path)
+   
 
-    # Close environment and save models
+
+
     env.close()
-    torch.save(actor.state_dict(), "ddpg_actor.pth")
-    torch.save(critic.state_dict(), "ddpg_critic.pth")
 
 # ================================
 # Run training
