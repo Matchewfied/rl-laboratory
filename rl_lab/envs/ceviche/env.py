@@ -1,12 +1,16 @@
 import sys
 from ..base import BaseCustomEnv
 from .dynamics import *
+import collections
 
 """
 Class to define first ceviche environment.
 """
 class CevicheEnv(BaseCustomEnv):
     def __init__(self,
+                 save_dir=None,
+                 save_rho=False,
+                 experiment_name = 'default',
                  omega1=2*np.pi*200e12,  # The two angular frequencies
                  omega2=2*np.pi*230e12,
                  dl=40e-9,               # Spatial resolution in meters
@@ -23,7 +27,7 @@ class CevicheEnv(BaseCustomEnv):
                  space=10,               # Space between the PMLs and the design region (in pixels)
                  wg_width=12,            # Width of the waveguide (in pixels)
                  space_slice=8,          # Length in pixels of the source/probe slices on each side of the center point
-                 # action_space = Box(low=0.0, high=1.0, shape=(3600,), dtype=np.float32) # Updates the entire design region, returns updated density values
+                 refresh_mode=True
                  ):
         super().__init__()
         self.omega1, self.omega2 = omega1, omega2
@@ -75,6 +79,20 @@ class CevicheEnv(BaseCustomEnv):
 
         self.E01 = mode_overlap(Ez1, self.probe1)
         self.E02 = mode_overlap(Ez2, self.probe2)
+        
+        self.refresh = refresh_mode
+        self.best_state = self.rho
+        self.best_val = objective(self.rho, self.bg_rho, self.design_region,
+                           self.blur_radius, self.N_blur, self.beta, self.eta,
+                           self.N_proj, self.source1, self.source2,
+                           self.probe1, self.probe2, 
+                           self.simulation1, self.simulation2,
+                           self.E01, self.E02)
+        
+        self.save_dir = save_dir
+        self.save_rho = save_rho
+        self.experiment_name = experiment_name
+    
     
     # Assume action is a list of two vectors
     # Action: List of two arrays: 
@@ -91,6 +109,8 @@ class CevicheEnv(BaseCustomEnv):
         """
         # properly break up the action
         new_densities, indices = action
+        #print (new_densities)
+        #print (indices)
 
         small_rho = extract_small_rho(self.rho, self.Nx, self.Ny, self.Npml, self.space)
         small_rho[indices] = new_densities
@@ -103,6 +123,17 @@ class CevicheEnv(BaseCustomEnv):
                            self.simulation1, self.simulation2,
                            self.E01, self.E02)
 
+        if self.refresh:
+            # If we found a better state, update
+            if reward > self.best_val:
+                print ("New best rho value", reward)
+                self.best_val = reward
+                self.best_state = self.rho
+                self.render(reward=reward)
+            # Reward is the difference between immediate objective and
+            # the value of the best reward so far
+            reward = reward - self.best_val
+
         return small_rho, reward
 
     def reset(self):
@@ -114,16 +145,26 @@ class CevicheEnv(BaseCustomEnv):
         self.output_slice2 = init_domain(self.Nx, self.Ny, self.Npml, 
                                         self.space, self.wg_width, 
                                         self.space_slice)
-
-        return extract_small_rho(self.rho, self.Nx, self.Ny, self.Npml, self.space)
+        
+        if self.refresh:
+            self.rho = self.best_state
+        
+        small_rho = extract_small_rho(self.rho, self.Nx, self.Ny, self.Npml, self.space)
+        return small_rho
     
-    def render(self):
-        pass
+    def render(self, reward=0.0):
+        epsr_curr = epsr_parameterization(self.rho, self.bg_rho, self.design_region,
+                                          self.epsr_min, self.epsr_max, self.blur_radius,
+                                          self.N_blur, self.beta, self.eta, self.N_proj)
+        source1 = insert_mode(self.omega1, self.dl, self.input_slice.x, self.input_slice.y, epsr_curr, m=1)
+        source2 = insert_mode(self.omega2, self.dl, self.input_slice.x, self.input_slice.y, epsr_curr, m=1)
+        formatted_reward = f"_{reward:.4f}_".replace('.', '_')
+        viz_sim(epsr_curr, source1, source2, self.omega1, self.dl,
+                self.omega2, self.Npml, slices = [self.input_slice, self.output_slice1, self.output_slice2],
+                experiment_name=self.experiment_name + formatted_reward, directory=self.save_dir, saverho=self.save_rho)
 
     def print_state(self):
         print("Print state called")
-        #print(extract_small_rho(self.rho, self.Nx, self.Ny, self.Npml, self.space))
-        #sys.stdout.flush()
 
     def set_state(self, state):
         self.rho = load_rho(self.rho, state, self.Nx, self.Ny, self.Npml, self.space)

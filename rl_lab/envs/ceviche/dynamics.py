@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib as mpl
 import autograd.numpy as npa
 import copy
+import os
 import matplotlib.pylab as plt
 from autograd.scipy.signal import convolve as conv
 from skimage.draw import disk
@@ -58,7 +59,7 @@ def init_domain(Nx, Ny, Npml, space=10, wg_width=10, space_slice=5, wg_shift=9):
     # Const init
     rho = design_region * 0.5
 
-    # Ranom init
+    # Random init
     # np.random.seed(4)
     # rho = design_region * ( 0.5 + 0.001 * np.random.rand(Nx, Ny) )
     # np.random.seed(None)
@@ -171,39 +172,77 @@ def epsr_parameterization(rho, bg_rho, design_region, epsr_min=1.0, epsr_max=12.
 def sim(epsr, omega1, omega2, dl, Npml, source1, source2, slices=[]):
     """Solve a simulation with permittivity 'epsr'"""
     simulation1 = fdfd_ez(omega1, dl, epsr, [Npml, Npml])
-    #_, _, Ez1 = simulation1.solve(source1)
+    _, _, Ez1 = simulation1.solve(source1)
     simulation2 = fdfd_ez(omega2, dl, epsr, [Npml, Npml])
-    #_, _, Ez2 = simulation2.solve(source2)
+    _, _, Ez2 = simulation2.solve(source2)
     return simulation1, simulation2
 
 def viz_sim(epsr, source1, source2, 
             omega1, dl, omega2, Npml,
             slices=[], directory=None, experiment_name="", 
             run=0, saverho=None):
-    """Solve and visualize a simulation with permittivity 'epsr'"""
+    """Solve and visualize a simulation with permittivity 'epsr'."""
 
+    # Solve for both frequencies
     simulation1 = fdfd_ez(omega1, dl, epsr, [Npml, Npml])
     _, _, Ez1 = simulation1.solve(source1)
     simulation2 = fdfd_ez(omega2, dl, epsr, [Npml, Npml])
     _, _, Ez2 = simulation2.solve(source2)
 
-    fig, ax = plt.subplots(1, 3, constrained_layout=True, figsize=(9,3))
+    # Visualization
+    fig, ax = plt.subplots(1, 3, constrained_layout=True, figsize=(9, 3))
     ceviche.viz.abs(Ez1, outline=epsr, ax=ax[0], cbar=False)
     ceviche.viz.abs(Ez2, outline=epsr, ax=ax[1], cbar=False)
     ceviche.viz.abs(epsr, ax=ax[2], cmap='Greys')
+
     for sl in slices:
-        ax[0].plot(sl.x*np.ones(len(sl.y)), sl.y, 'w-', alpha=0.5)
-        ax[1].plot(sl.x*np.ones(len(sl.y)), sl.y, 'w-', alpha=0.5)
+        ax[0].plot(sl[0] * np.ones(len(sl[1])), sl[1], 'w-', alpha=0.5)
+        ax[1].plot(sl[0]* np.ones(len(sl[1])), sl[1], 'w-', alpha=0.5)
 
-    ax[0].set_title('$\lambda_1$ = %.2f $\mu$m' % (299792458/(omega1/2/np.pi)/1e-6))
-    ax[1].set_title('$\lambda_2$ = %.2f $\mu$m' % (299792458/(omega2/2/np.pi)/1e-6))
+    # Title wavelengths
+    lambda1 = 299792458 / (omega1 / (2 * np.pi)) / 1e-6
+    lambda2 = 299792458 / (omega2 / (2 * np.pi)) / 1e-6
+    ax[0].set_title(r'$\lambda_1$ = %.2f $\mu$m' % lambda1)
+    ax[1].set_title(r'$\lambda_2$ = %.2f $\mu$m' % lambda2)
 
+    # Save outputs
     if directory is not None:
-        plt.savefig(directory + experiment_name + str(run) + '.png')
+        os.makedirs(directory, exist_ok=True)
+        base_path = os.path.join(directory, f"{experiment_name}{run}")
+        fig.savefig(base_path + '.png', dpi=300)
         if saverho is not None:
-            np.save(directory + experiment_name + str(run) + '.npy', saverho)
+            np.save(base_path + '.npy', saverho)
 
     return (simulation1, simulation2, ax, fig)
+
+# def viz_sim(epsr, source1, source2, 
+#             omega1, dl, omega2, Npml,
+#             slices=[], directory=None, experiment_name="", 
+#             run=0, saverho=None):
+#     """Solve and visualize a simulation with permittivity 'epsr'"""
+
+#     simulation1 = fdfd_ez(omega1, dl, epsr, [Npml, Npml])
+#     _, _, Ez1 = simulation1.solve(source1)
+#     simulation2 = fdfd_ez(omega2, dl, epsr, [Npml, Npml])
+#     _, _, Ez2 = simulation2.solve(source2)
+
+#     fig, ax = plt.subplots(1, 3, constrained_layout=True, figsize=(9,3))
+#     ceviche.viz.abs(Ez1, outline=epsr, ax=ax[0], cbar=False)
+#     ceviche.viz.abs(Ez2, outline=epsr, ax=ax[1], cbar=False)
+#     ceviche.viz.abs(epsr, ax=ax[2], cmap='Greys')
+#     for sl in slices:
+#         ax[0].plot(sl.x*np.ones(len(sl.y)), sl.y, 'w-', alpha=0.5)
+#         ax[1].plot(sl.x*np.ones(len(sl.y)), sl.y, 'w-', alpha=0.5)
+
+#     ax[0].set_title('$\lambda_1$ = %.2f $\mu$m' % (299792458/(omega1/2/np.pi)/1e-6))
+#     ax[1].set_title('$\lambda_2$ = %.2f $\mu$m' % (299792458/(omega2/2/np.pi)/1e-6))
+
+#     if directory is not None:
+#         plt.savefig(directory + experiment_name + str(run) + '.png')
+#         if saverho is not None:
+#             np.save(directory + experiment_name + str(run) + '.npy', saverho)
+
+#     return (simulation1, simulation2, ax, fig)
 
 
 # Apparently the below code can be used to make gifs, figure this out later.
