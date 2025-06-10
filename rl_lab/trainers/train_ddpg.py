@@ -21,28 +21,31 @@ def create_folder(base_name):
 
 if __name__ == "__main__":
 
-    # Linear Model
     linear_model = nn.Sequential(
-        nn.Linear(3600, 1024),
+        nn.Linear(3600, 64),  # Layer 1
         nn.ReLU(),
-        nn.Linear(1024, 3600),
-        nn.Sigmoid()  # assuming actions are in [0, 1]
+        nn.Linear(64, 32),    # Layer 2
+        nn.ReLU(),
+        nn.Linear(32, 3600),  # Layer 3
+        nn.Sigmoid()
     )
 
-    # Conv Model
     conv_model = nn.Sequential(
-        nn.Unflatten(1, (1, 60, 60)),         # from [B, 3600] -> [B, 1, 60, 60]
-        nn.Conv2d(1, 16, kernel_size=5, padding=2),  # same spatial dims
+        nn.Unflatten(1, (1, 60, 60)),                # [B, 3600] -> [B, 1, 60, 60]
+        nn.Conv2d(1, 64, kernel_size=5, padding=2),  # [B, 64, 60, 60]
         nn.ReLU(),
-        nn.Conv2d(16, 32, kernel_size=3, padding=1),
+        nn.Conv2d(64, 128, kernel_size=3, padding=1),# [B, 128, 60, 60]
         nn.ReLU(),
-        nn.Conv2d(32, 1, kernel_size=3, padding=1),  # back to 1 channel
-        nn.Sigmoid(),                      # keeping outputs in [0,1] for each cell
-        nn.Flatten(start_dim=1)           # from [B, 1, 60, 60] -> [B, 3600]
+        nn.Conv2d(128, 64, kernel_size=3, padding=1),# [B, 64, 60, 60]
+        nn.ReLU(),
+        nn.Conv2d(64, 1, kernel_size=3, padding=1),  # [B, 1, 60, 60]
+        nn.Sigmoid(),
+        nn.Flatten(start_dim=1)                      # [B, 1, 60, 60] -> [B, 3600]
     )
 
     nets = [('conv', conv_model), ('linear', linear_model)]
-    episode_lens = [50, 10, 5, 1]
+    episode_lens = [50, 50, 50, 50]
+
     total_steps = 8000
     for net in nets:
         for ep_len in episode_lens:
