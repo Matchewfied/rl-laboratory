@@ -20,7 +20,7 @@ CRITIC_LR = 1e-3           # Learning rate for the critic network
 BUFFER_SIZE = 100000       # Maximum size of the replay buffer
 BATCH_SIZE = 64            # Mini-batch size for sampling from the replay buffer
 TAU = 1e-3                 # Soft update factor for target networks
-NOISE_SCALE = 0.5          # Scale of Ornstein-Uhlenbeck exploration noise
+NOISE_SCALE = 0.6          # Scale of Ornstein-Uhlenbeck exploration noise
 MAX_EPISODES = 500         # Total number of training episodes
 MAX_STEPS = 50            # Maximum steps per episode
 
@@ -205,6 +205,7 @@ def train(num_episodes, num_steps, save_dir, save_rho, net, experiment_name): # 
         replay_buffer.push(state, action, reward, next_state, done)
         state = next_state if not done else env.reset()
 
+    print("Running for " + str(num_episodes) + " episodes.")
     for episode in range(1, num_episodes + 1):
         state = env.reset()
         noise.reset()
@@ -253,18 +254,17 @@ def train(num_episodes, num_steps, save_dir, save_rho, net, experiment_name): # 
                 soft_update(target_critic, critic, TAU)
 
             if done:
+                print ("Done activated.")
                 break
 
         print(f"Episode {episode}: Reward = {episode_reward:.2f}")
-        if total_steps % 2000 == 1999:
+        if total_steps % 1000 == 0:
+            print("Saving the model...")
             actor_save_path = os.path.join(save_dir, "ddpg_actor.pth")
             critic_save_path = os.path.join(save_dir, "ddpg_critic.pth")
             torch.save(actor.state_dict(), actor_save_path)
             torch.save(critic.state_dict(), critic_save_path)
    
-
-
-
     env.close()
 
 # ================================

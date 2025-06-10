@@ -88,6 +88,7 @@ class CevicheEnv(BaseCustomEnv):
                            self.probe1, self.probe2, 
                            self.simulation1, self.simulation2,
                            self.E01, self.E02)
+        print("initial reward", self.best_val)
         
         self.save_dir = save_dir
         self.save_rho = save_rho
@@ -114,6 +115,7 @@ class CevicheEnv(BaseCustomEnv):
 
         small_rho = extract_small_rho(self.rho, self.Nx, self.Ny, self.Npml, self.space)
         small_rho[indices] = new_densities
+        small_rho = np.clip(small_rho, 0, 1)
         self.rho = load_rho(self.rho, small_rho, self.Nx, self.Ny, self.Npml, self.space)
 
         reward = objective(self.rho, self.bg_rho, self.design_region,
